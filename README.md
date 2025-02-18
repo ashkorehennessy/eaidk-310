@@ -1,6 +1,6 @@
 # EAIDK-310使用记录
 
-本文档将介绍如何给EAIDK-310更换系统，包括如何[获取并配置rootfs](#获取并配置rootfs)（根文件系统），[烧录镜像](#烧录镜像)，[开发环境配置](#开发环境配置)，[使用tf卡](#使用tf卡)。
+本文档主要介绍如何给EAIDK-310更换系统，包括如何[获取并配置rootfs](#获取并配置rootfs)（根文件系统），[烧录镜像](#烧录镜像)，[开发环境配置](#开发环境配置)，[使用tf卡](#使用tf卡)，以及附加内容：[I2C和SPI示例](#I2C和SPI示例)。
 
 ## 获取并配置rootfs
 
@@ -576,3 +576,114 @@ df -h
 ```
 
 如果不再使用tf卡，把`/etc/fstab`文件里的那一行删除，然后重启系统，检查家目录是否挂载到tf卡上，把tf卡拔出。如果不删除那一行，系统启动时会报错，因为找不到tf卡。
+
+## I2C和SPI示例
+
+I2C和SPI是两种常用的串行通信协议，可以用于连接传感器、显示器、存储器等外设，本例分别使用I2C和SPI协议初始化并读取ICM-20948。
+
+连接开发板，克隆我已经写好的[库](https://github.com/ashkorehennessy/icm20948_linux)
+
+```shell
+git clone https://github.com/ashkorehennessy/icm20948_linux
+```
+
+根据官方资料提供的引脚示意图接线
+
+![引脚示意图](assets/14.png)
+
+![引脚示意图](assets/15.png)
+
+### I2C示例
+
+按照下表接线
+
+| ICM-20948引脚 | 开发板引脚           |
+|-------------|-----------------|
+| VCC         | 1:V3.3 DC Power |
+| GND         | 6:Ground        |
+| SCL         | 5:I2C0_SCL      |
+| SDA         | 3:I2C0_SDA      |
+| NCS         | 不接              |
+| AD0         | 9:Ground        |
+| INT         | 不接              |
+| FSY         | 不接              |
+| ACL         | 不接              |
+| ADA         | 不接              |
+
+![I2C接线](assets/16.jpg)
+
+此时，ICM20948就连接到了开发板的I2C0总线，设备路径为`/dev/i2c-0`，可以使用`i2cdetect`命令检测ICM-20948的地址
+
+```shell
+sudo i2cdetect -y 0
+```
+
+如果ICM-20948的地址是`0x68`，则可以使用下面的命令读取ICM-20948的WHO_AM_I寄存器
+
+```shell
+sudo i2cget -y 0 0x68 0x00
+```
+
+如果返回的值是`0xEA`，则说明ICM-20948正常工作
+
+接下来进入`icm20948_linux`目录，修改main.c文件，找到初始化部分代码，改为初始化i2c总线
+
+```c
+int main() {
+    int ret;
+    icm20948_data_t icm20948_data;
+    icm20948_handle_t icm20948 = icm20948_create(&icm20948_data, "icm20948");
+    ret = icm20948_i2c_bus_init(icm20948, "/dev/i2c-0", 0x68);
+```
+
+编译并运行
+
+```shell
+gcc -o icm20948 icm20948.c main.c -lm
+sudo ./icm20948
+```
+
+如果一切正常，终端会不断输出ICM-20948解算出来的角度
+
+### SPI示例
+
+
+按照下表接线
+
+| ICM-20948引脚 | 开发板引脚           |
+|-------------|-----------------|
+| VCC         | 1:V3.3 DC Power |
+| GND         | 6:Ground        |
+| SCLK        | 23:SPI_CLK_M2   |
+| SDI         | 19:SPI_TXD_M2   |
+| NCS         | 24:SPI_CS0N_M2  |
+| AD0         | 21:SPI_RXD_M2   |
+| INT         | 不接              |
+| FSY         | 不接              |
+| ACL         | 不接              |
+| ADA         | 不接              |
+
+![SPI接线](assets/17.jpg)
+
+此时，ICM20948就连接到了开发板的SPI总线，设备路径为`/dev/spidev32766.0`
+
+接下来进入`icm20948_linux`目录，修改main.c文件，找到初始化部分代码，改为初始化SPI总线
+
+```c
+int main() {
+    int ret;
+    icm20948_data_t icm20948_data;
+    icm20948_handle_t icm20948 = icm20948_create(&icm20948_data, "icm20948");
+    ret = icm20948_spi_bus_init(icm20948, "/dev/spidev32766.0");
+```
+
+编译并运行
+
+```shell
+gcc -o icm20948 icm20948.c main.c -lm
+sudo ./icm20948
+```
+
+如果一切正常，终端会不断输出ICM-20948解算出来的角度
+
+![输出](assets/18.png)
